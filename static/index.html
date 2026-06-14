@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RH Inteligente — Assistente Virtual</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="bg-glow bg-glow-top"></div>
+    <div class="bg-glow bg-glow-bottom"></div>
+
+    <div class="app">
+
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-logo">
+                <div class="logo-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                        <circle cx="9" cy="7" r="4"/>
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                    </svg>
+                </div>
+                <div>
+                    <h1>RH <span>Inteligente</span></h1>
+                    <p>Powered by CrewAI + Groq</p>
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <span class="sidebar-label">Agente Ativo</span>
+                <div class="agent-card active">
+                    <div class="agent-icon">🤖</div>
+                    <div class="agent-info">
+                        <strong>Assistente RH</strong>
+                        <span>Llama 3.3 · 70B</span>
+                    </div>
+                    <div class="agent-status-dot"></div>
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <span class="sidebar-label">Capacidades</span>
+                <ul class="capability-list">
+                    <li>
+                        <span class="cap-icon">📋</span>
+                        <span>Políticas e benefícios</span>
+                    </li>
+                    <li>
+                        <span class="cap-icon">📊</span>
+                        <span>People Analytics</span>
+                    </li>
+                    <li>
+                        <span class="cap-icon">🎯</span>
+                        <span>Avaliação de desempenho</span>
+                    </li>
+                    <li>
+                        <span class="cap-icon">📝</span>
+                        <span>Abertura de chamados</span>
+                    </li>
+                    <li>
+                        <span class="cap-icon">✅</span>
+                        <span>Compliance e CLT</span>
+                    </li>
+                </ul>
+            </div>
+
+            <div class="sidebar-footer">
+                <div class="status-pill">
+                    <span class="pulse-dot"></span>
+                    Sistema Online
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Chat -->
+        <main class="chat-panel">
+
+            <!-- Header -->
+            <header class="chat-header">
+                <div class="chat-header-info">
+                    <div class="header-avatar">🤖</div>
+                    <div>
+                        <h2>Assistente de RH</h2>
+                        <p>Responde em instantes</p>
+                    </div>
+                </div>
+                <div class="chat-header-actions">
+                    <select id="userSelect" class="user-select" onchange="onUserChange()">
+                        <option value="Rafael Nunes">Rafael Nunes</option>
+                        <option value="Teste 2">Teste 2</option>
+                        <option value="Teste 3">Teste 3</option>
+                    </select>
+                    <button class="clear-btn" onclick="clearChat()" title="Limpar todas as conversas">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="1 4 1 10 7 10"/>
+                            <path d="M3.51 15a9 9 0 1 0 .49-3.51"/>
+                        </svg>
+                    </button>
+                </div>
+            </header>
+
+            <!-- Messages -->
+            <div class="messages-area" id="messagesArea">
+                <div class="message agent-message" id="welcomeMsg">
+                    <div class="msg-avatar">🤖</div>
+                    <div class="msg-body">
+                        <div class="msg-bubble">
+                            <p>Olá! 👋 Sou seu Assistente de RH com Inteligência Artificial.</p>
+                            <p style="margin-top: 0.5rem">Posso ajudar com:</p>
+                            <ul>
+                                <li>📋 Políticas, benefícios e férias</li>
+                                <li>📊 Dados de headcount e turnover</li>
+                                <li>🎯 Avaliações e planos de carreira</li>
+                                <li>📝 Abertura de chamados de RH</li>
+                                <li>✅ Dúvidas sobre CLT e compliance</li>
+                            </ul>
+                            <p style="margin-top: 0.5rem">Como posso ajudar você hoje?</p>
+                        </div>
+                        <span class="msg-time" id="welcomeTime"></span>
+                    </div>
+                </div>
+
+                <!-- Typing indicator (always last inside messages-area) -->
+                <div class="typing-indicator" id="typingIndicator" style="display:none;">
+                    <div class="msg-avatar">🤖</div>
+                    <div class="typing-bubble">
+                        <span></span><span></span><span></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Input -->
+            <footer class="input-area">
+                <div class="input-box" id="inputBox">
+                    <textarea
+                        id="msgInput"
+                        placeholder="Digite sua dúvida de RH..."
+                        rows="1"
+                        onkeydown="handleKey(event)"
+                        oninput="autoResize(this)"
+                    ></textarea>
+                    <button class="send-btn" id="sendBtn" onclick="sendMessage()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                            <line x1="22" y1="2" x2="11" y2="13"/>
+                            <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                        </svg>
+                    </button>
+                </div>
+                <p class="input-hint">Enter para enviar &nbsp;·&nbsp; Shift+Enter para nova linha</p>
+            </footer>
+
+        </main>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
