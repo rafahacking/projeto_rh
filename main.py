@@ -3,7 +3,7 @@ import secrets
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
@@ -13,7 +13,7 @@ load_dotenv()
 
 import db
 from agents.hr_agent import get_hr_response
-from rag.ingest import ingest_all
+from rag.ingest import ingest_all, ingest_bytes
 
 
 @asynccontextmanager
@@ -171,6 +171,40 @@ def admin_delete_unanswered(
 ):
     db.delete_unanswered(question_id)
     return {"ok": True}
+
+
+@app.post("/admin/upload")
+async def admin_upload(
+    file: UploadFile = File(...),
+    _: str = Depends(_verify_admin),
+):
+    from rag.ingest import SUPPORTED_EXTENSIONS
+    ext = "." + file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
+    if ext not in SUPPORTED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Formato não suportado. Aceitos: {', '.join(sorted(SUPPORTED_EXTENSIONS))}",
+        )
+
+    content = await file.read()
+    if len(content) == 0:
+        raise HTTPException(status_code=400, detail="Arquivo vazio.")
+
+    try:
+        result = ingest_bytes(file.filename, content)
+        # Invalida cache do retriever para os novos chunks ficarem disponíveis imediatamente
+        import rag.retriever as _ret
+        _ret._collection_cache = None
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao processar arquivo: {str(e)}")
+
+    return {
+        "ok": True,
+        "arquivo": file.filename,
+        "doc_id": result["doc_id"],
+        "chunks_indexados": result["chunks"],
+        "colecao": "rh_knowledge",
+    }
 
 
 @app.post("/admin/ingest")

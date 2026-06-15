@@ -1,3 +1,4 @@
+import io
 import os
 import re
 from pathlib import Path
@@ -5,7 +6,9 @@ from pathlib import Path
 import frontmatter
 import chromadb
 from chromadb.utils import embedding_functions
-from langchain_text_splitters import MarkdownHeaderTextSplitter
+from langchain_text_splitters import MarkdownHeaderTextSplitter, RecursiveCharacterTextSplitter
+
+SUPPORTED_EXTENSIONS = {".md", ".txt", ".docx", ".pdf"}
 
 CHROMA_PATH = Path(__file__).parent.parent / "chroma_db"
 EMBED_MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
@@ -82,6 +85,95 @@ def ingest_file(filepath: Path, collection) -> int:
         collection.upsert(ids=ids, documents=documents, metadatas=metadatas)
 
     return len(ids)
+
+
+def _extract(filename: str, content_bytes: bytes) -> tuple[str, dict, bool]:
+    """
+    Extrai texto e metadados de diferentes formatos.
+    Retorna: (texto, meta, is_markdown)
+    """
+    ext = Path(filename).suffix.lower()
+    stem = Path(filename).stem
+    base_meta = {"doc_id": stem, "title": stem, "category": "", "tags": "", "confidentiality": ""}
+
+    if ext == ".md":
+        raw = content_bytes.decode("utf-8", errors="replace")
+        post = frontmatter.loads(raw)
+        meta = {**base_meta, **{k: v for k, v in post.metadata.items() if isinstance(v, str)}}
+        tags = post.metadata.get("tags", [])
+        meta["tags"] = ", ".join(tags) if isinstance(tags, list) else str(tags)
+        meta["doc_id"] = post.metadata.get("doc_id", stem)
+        return post.content, meta, True
+
+    elif ext == ".txt":
+        text = content_bytes.decode("utf-8", errors="replace")
+        return text, base_meta, False
+
+    elif ext == ".docx":
+        from docx import Document as DocxDocument
+        doc = DocxDocument(io.BytesIO(content_bytes))
+        paragraphs = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
+        return "\n\n".join(paragraphs), base_meta, False
+
+    elif ext == ".pdf":
+        from pypdf import PdfReader
+        reader = PdfReader(io.BytesIO(content_bytes))
+        pages = [page.extract_text() or "" for page in reader.pages]
+        return "\n\n".join(pages), base_meta, False
+
+    else:
+        raise ValueError(f"Formato não suportado: {ext}. Use: {', '.join(SUPPORTED_EXTENSIONS)}")
+
+
+def ingest_bytes(filename: str, content_bytes: bytes) -> dict:
+    """Ingere um arquivo recebido como bytes (upload via API)."""
+    raw_text, meta, is_markdown = _extract(filename, content_bytes)
+    content = _clean(raw_text)
+    doc_id = meta["doc_id"]
+
+    if is_markdown:
+        splitter = MarkdownHeaderTextSplitter(
+            headers_to_split_on=[("#", "h1"), ("##", "h2"), ("###", "h3")],
+            strip_headers=False,
+        )
+        raw_chunks = splitter.split_text(content)
+        chunks_data = [
+            {
+                "text": _clean(c.page_content),
+                "section": (
+                    c.metadata.get("h2") or c.metadata.get("h3") or c.metadata.get("h1") or ""
+                ),
+            }
+            for c in raw_chunks
+        ]
+    else:
+        splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=100)
+        raw_chunks = splitter.split_text(content)
+        chunks_data = [{"text": _clean(c), "section": ""} for c in raw_chunks]
+
+    ids, documents, metadatas = [], [], []
+
+    for i, chunk in enumerate(chunks_data):
+        text = chunk["text"]
+        if len(text) < 50:
+            continue
+        ids.append(f"{doc_id}_{i:03d}")
+        documents.append(text)
+        metadatas.append({
+            "doc_id": doc_id,
+            "title": meta.get("title", doc_id),
+            "category": meta.get("category", ""),
+            "tags": meta.get("tags", ""),
+            "section": chunk["section"],
+            "source_file": filename,
+            "confidentiality": meta.get("confidentiality", ""),
+        })
+
+    if ids:
+        collection = _get_collection()
+        collection.upsert(ids=ids, documents=documents, metadatas=metadatas)
+
+    return {"chunks": len(ids), "doc_id": doc_id}
 
 
 def ingest_all(docs_path: str | None = None) -> int:
