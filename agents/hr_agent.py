@@ -107,7 +107,7 @@ def get_hr_response(
     agente_rh = Agent(
         role="Assistente de Recursos Humanos",
         goal=(
-            f"Auxiliar {nome} com dúvidas de RH de forma precisa, empática e sem alucinar."
+            f"Auxiliar {nome} EXCLUSIVAMENTE com dúvidas de RH, de forma precisa e sem alucinar."
         ),
         backstory=(
             f"Você é um assistente de RH inteligente da empresa, conversando com {nome}.\n\n"
@@ -117,13 +117,20 @@ def get_hr_response(
             "- Existe intenção clara de obter informação de RH\n\n"
             "## Quando NÃO usar a ferramenta:\n"
             "- Saudações, agradecimentos ou respostas curtas ('oi', 'ok', 'obrigado', 'ótimo')\n"
-            "- Conversa casual sem intenção de busca\n"
-            "- O histórico mostra que a pergunta já foi respondida\n\n"
-            "## Regras de resposta:\n"
+            "- Conversa casual sem intenção de busca\n\n"
+            "## Perguntas fora do escopo de RH:\n"
+            "- Se a pergunta NÃO tiver relação com Recursos Humanos (ex: história, culinária, "
+            "esportes, tecnologia geral, entretenimento, etc.), NUNCA responda com base no seu "
+            "conhecimento geral.\n"
+            "- Nestes casos, comece sua resposta com exatamente 'FORA_DO_ESCOPO:' e em seguida "
+            "informe educadamente que você é especializado em RH e convide o usuário a fazer "
+            "perguntas relacionadas a benefícios, férias, políticas, onboarding, performance "
+            "ou abertura de chamados.\n\n"
+            "## Regras gerais:\n"
             "- Responda SEMPRE em português do Brasil\n"
             f"- {'Esta é a primeira mensagem — pode cumprimentar o usuário.' if is_new else 'A conversa já está em andamento — vá direto ao ponto, sem repetir saudações.'}\n"
             "- Se a ferramenta retornar BASE_SEM_RESPOSTA: informe que não tem a informação "
-            "e ofereça abrir um chamado\n"
+            "e ofereça abrir um chamado com o RH\n"
             "- NUNCA invente políticas, números ou dados não encontrados na ferramenta\n"
             "- Seja empático, direto e objetivo"
         ),
@@ -143,18 +150,31 @@ def get_hr_response(
             "- Se for uma pergunta ou pedido sobre RH: use obrigatoriamente a ferramenta "
             "'buscar_conhecimento_rh' e elabore uma resposta completa e detalhada com base "
             "no conteúdo retornado. Inclua todos os passos, condições e orientações "
-            "relevantes encontrados nos documentos. Use listas quando ajudar a organizar."
+            "relevantes encontrados nos documentos. Use listas quando ajudar a organizar.\n"
+            "- Se a pergunta NÃO tiver nenhuma relação com RH (ex: história, esportes, "
+            "culinária, ciência, entretenimento, tecnologia geral): inicie sua resposta com "
+            "exatamente 'FORA_DO_ESCOPO:' e redirecione educadamente o usuário para temas de RH. "
+            "NÃO use ferramentas e NÃO responda a pergunta em si."
         ),
         expected_output=(
             "Para perguntas de RH: resposta detalhada, estruturada e fundamentada nos "
             "documentos retornados pela ferramenta, em português do Brasil. "
-            "Para conversa casual: resposta curta e natural."
+            "Para conversa casual: resposta curta e natural. "
+            "Para perguntas fora do escopo: resposta começando com 'FORA_DO_ESCOPO:' "
+            "redirecionando o usuário para temas de RH."
         ),
         agent=agente_rh,
     )
 
     crew = Crew(agents=[agente_rh], tasks=[tarefa], verbose=False)
     resposta_final = str(crew.kickoff()).strip()
+
+    # Detecta pergunta fora do escopo de RH
+    MARKER = "FORA_DO_ESCOPO:"
+    if resposta_final.upper().startswith(MARKER.upper()):
+        # Remove o marcador e limpa espaços
+        resposta_final = resposta_final[len(MARKER):].strip()
+        sem_resposta[0] = True
 
     # Detecta se o agente sinalizou necessidade de escalada
     deve_escalar = any(
