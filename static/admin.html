@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="/static/style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
     <style>
         .admin-wrap {
             min-height: 100vh;
@@ -15,6 +16,9 @@
             justify-content: center;
             padding: 2rem;
         }
+
+        /* ── Sobrescreve overflow do style.css global ── */
+        html, body { height: auto; min-height: 100%; overflow: auto; }
 
         /* ── Login card ── */
         .login-card {
@@ -198,6 +202,62 @@
             transition: color .15s;
         }
         .back-link:hover { color: var(--text); }
+
+        /* ── Charts ── */
+        .charts-row {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 1rem;
+        }
+        .chart-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 1.25rem 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+        .chart-title {
+            font-size: 0.78rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: .07em;
+            color: var(--text-muted);
+        }
+        .chart-wrap {
+            position: relative;
+            width: 100%;
+        }
+        .chart-wrap-donut {
+            max-width: 200px;
+            margin: 0 auto;
+        }
+        .stats-pills {
+            display: flex;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .stat-pill {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.15rem;
+        }
+        .stat-pill-value {
+            font-size: 1.3rem;
+            font-weight: 700;
+        }
+        .stat-pill-label {
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: .05em;
+        }
+        .pill-green { color: #4ade80; }
+        .pill-red   { color: #f87171; }
+        .pill-violet{ color: #a78bfa; }
     </style>
 </head>
 <body>
@@ -234,8 +294,39 @@
                 </div>
                 <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap">
                     <span class="panel-meta" id="panelMeta"></span>
-                    <button class="btn-secondary" onclick="loadQuestions()">↺ Atualizar</button>
+                    <button class="btn-secondary" onclick="loadStats(); loadQuestions()">↺ Atualizar</button>
                     <button class="btn-danger" onclick="clearAll()">🗑 Apagar todas</button>
+                </div>
+            </div>
+
+            <!-- Charts -->
+            <div class="charts-row">
+                <div class="chart-card">
+                    <div class="chart-title">Reconhecimento de Perguntas</div>
+                    <div class="chart-wrap chart-wrap-donut">
+                        <canvas id="donutChart"></canvas>
+                    </div>
+                    <div class="stats-pills">
+                        <div class="stat-pill">
+                            <span class="stat-pill-value pill-green" id="statRespondidas">—</span>
+                            <span class="stat-pill-label">Respondidas</span>
+                        </div>
+                        <div class="stat-pill">
+                            <span class="stat-pill-value pill-red" id="statSemResposta">—</span>
+                            <span class="stat-pill-label">Sem resposta</span>
+                        </div>
+                        <div class="stat-pill">
+                            <span class="stat-pill-value pill-violet" id="statTotal">—</span>
+                            <span class="stat-pill-label">Total</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="chart-card">
+                    <div class="chart-title">Atividade — Últimos 7 Dias</div>
+                    <div class="chart-wrap">
+                        <canvas id="barChart"></canvas>
+                    </div>
                 </div>
             </div>
 
@@ -264,6 +355,8 @@
 
     <script>
         let _credentials = '';
+        let _donutChart = null;
+        let _barChart   = null;
 
         function authHeader() {
             return 'Basic ' + btoa(_credentials);
@@ -294,6 +387,7 @@
                 } else {
                     document.getElementById('loginCard').style.display = 'none';
                     document.getElementById('adminPanel').style.display = 'flex';
+                    loadStats();
                     loadQuestions();
                 }
             } catch {
@@ -303,6 +397,161 @@
 
             btn.disabled = false;
             btn.textContent = 'Entrar';
+        }
+
+        async function loadStats() {
+            const res  = await fetch('/admin/stats', { headers: { 'Authorization': authHeader() } });
+            const data = await res.json();
+
+            document.getElementById('statRespondidas').textContent  = data.total_respondidas;
+            document.getElementById('statSemResposta').textContent  = data.total_sem_resposta;
+            document.getElementById('statTotal').textContent        = data.total_mensagens;
+
+            renderDonut(data.total_respondidas, data.total_sem_resposta);
+            renderBarChart(data.msgs_por_dia, data.unanswered_por_dia);
+        }
+
+        function renderDonut(respondidas, semResposta) {
+            const ctx = document.getElementById('donutChart').getContext('2d');
+            if (_donutChart) _donutChart.destroy();
+
+            const total = respondidas + semResposta;
+            const pct   = total > 0 ? Math.round((respondidas / total) * 100) : 0;
+
+            _donutChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Respondidas', 'Sem resposta'],
+                    datasets: [{
+                        data: [respondidas || 0, semResposta || 0],
+                        backgroundColor: ['rgba(74,222,128,.8)', 'rgba(248,113,113,.8)'],
+                        borderColor:     ['rgba(74,222,128,1)',  'rgba(248,113,113,1)'],
+                        borderWidth: 1.5,
+                        hoverOffset: 6,
+                    }],
+                },
+                options: {
+                    cutout: '72%',
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: ctx => ` ${ctx.label}: ${ctx.parsed} (${total > 0 ? Math.round((ctx.parsed/total)*100) : 0}%)`,
+                            },
+                            bodyColor: '#e2e8f0',
+                            backgroundColor: '#191d36',
+                            borderColor: 'rgba(255,255,255,0.07)',
+                            borderWidth: 1,
+                        },
+                    },
+                },
+                plugins: [{
+                    id: 'centerText',
+                    beforeDraw(chart) {
+                        const { ctx, chartArea: { left, top, right, bottom } } = chart;
+                        const cx = (left + right) / 2;
+                        const cy = (top  + bottom) / 2;
+                        ctx.save();
+                        ctx.textAlign    = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillStyle    = '#e2e8f0';
+                        ctx.font         = 'bold 1.4rem Inter, sans-serif';
+                        ctx.fillText(pct + '%', cx, cy - 8);
+                        ctx.font         = '0.6rem Inter, sans-serif';
+                        ctx.fillStyle    = '#4a5568';
+                        ctx.fillText('acurácia', cx, cy + 12);
+                        ctx.restore();
+                    },
+                }],
+            });
+        }
+
+        function renderBarChart(msgsPorDia, unansweredPorDia) {
+            const ctx = document.getElementById('barChart').getContext('2d');
+            if (_barChart) _barChart.destroy();
+
+            // Gera rótulos dos últimos 7 dias
+            const labels = [];
+            const mapTotal  = {};
+            const mapUnans  = {};
+            for (let i = 6; i >= 0; i--) {
+                const d = new Date();
+                d.setDate(d.getDate() - i);
+                const key = d.toISOString().split('T')[0];
+                labels.push(d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }));
+                mapTotal[key] = 0;
+                mapUnans[key] = 0;
+            }
+
+            // Preenche com dados reais
+            const allKeys = Object.keys(mapTotal);
+            msgsPorDia.forEach(r      => { if (mapTotal[r.dia] !== undefined) mapTotal[r.dia] = r.total; });
+            unansweredPorDia.forEach(r => { if (mapUnans[r.dia] !== undefined) mapUnans[r.dia] = r.total; });
+
+            const totalData = allKeys.map(k => mapTotal[k]);
+            const unanswData = allKeys.map(k => mapUnans[k]);
+            const answData   = allKeys.map((k, i) => Math.max(0, totalData[i] - unanswData[i]));
+
+            _barChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: 'Respondidas',
+                            data: answData,
+                            backgroundColor: 'rgba(74,222,128,.65)',
+                            borderColor:     'rgba(74,222,128,1)',
+                            borderWidth: 1.5,
+                            borderRadius: 6,
+                            borderSkipped: false,
+                        },
+                        {
+                            label: 'Sem resposta',
+                            data: unanswData,
+                            backgroundColor: 'rgba(248,113,113,.65)',
+                            borderColor:     'rgba(248,113,113,1)',
+                            borderWidth: 1.5,
+                            borderRadius: 6,
+                            borderSkipped: false,
+                        },
+                    ],
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    scales: {
+                        x: {
+                            stacked: false,
+                            grid: { color: 'rgba(255,255,255,.04)' },
+                            ticks: { color: '#4a5568', font: { size: 11 } },
+                        },
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: 'rgba(255,255,255,.04)' },
+                            ticks: { color: '#4a5568', font: { size: 11 }, precision: 0 },
+                        },
+                    },
+                    plugins: {
+                        legend: {
+                            labels: {
+                                color: '#94a3b8',
+                                font: { size: 11 },
+                                boxWidth: 12,
+                                boxHeight: 12,
+                                borderRadius: 3,
+                                useBorderRadius: true,
+                            },
+                        },
+                        tooltip: {
+                            bodyColor: '#e2e8f0',
+                            backgroundColor: '#191d36',
+                            borderColor: 'rgba(255,255,255,0.07)',
+                            borderWidth: 1,
+                        },
+                    },
+                },
+            });
         }
 
         async function loadQuestions() {

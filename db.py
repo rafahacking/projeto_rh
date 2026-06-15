@@ -130,3 +130,42 @@ def clear_all():
         conn.execute("DELETE FROM conversations")
         conn.execute("DELETE FROM sessions")
         conn.commit()
+
+
+def get_stats() -> dict:
+    with _conn() as conn:
+        total_user = conn.execute(
+            "SELECT COUNT(*) FROM conversations WHERE role = 'user'"
+        ).fetchone()[0]
+
+        total_unanswered = conn.execute(
+            "SELECT COUNT(*) FROM unanswered_questions"
+        ).fetchone()[0]
+
+        msgs_por_dia = conn.execute(
+            """
+            SELECT date(timestamp) AS dia, COUNT(*) AS total
+            FROM conversations
+            WHERE role = 'user' AND timestamp >= date('now', '-6 days')
+            GROUP BY date(timestamp)
+            ORDER BY dia ASC
+            """
+        ).fetchall()
+
+        unanswered_por_dia = conn.execute(
+            """
+            SELECT date(timestamp) AS dia, COUNT(*) AS total
+            FROM unanswered_questions
+            WHERE timestamp >= date('now', '-6 days')
+            GROUP BY date(timestamp)
+            ORDER BY dia ASC
+            """
+        ).fetchall()
+
+    return {
+        "total_mensagens": total_user,
+        "total_sem_resposta": total_unanswered,
+        "total_respondidas": max(0, total_user - total_unanswered),
+        "msgs_por_dia": [dict(r) for r in msgs_por_dia],
+        "unanswered_por_dia": [dict(r) for r in unanswered_por_dia],
+    }

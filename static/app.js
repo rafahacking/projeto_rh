@@ -156,7 +156,11 @@ async function sendMessage() {
         const data = await res.json();
         hideTyping();
 
-        if (data.resposta) {
+        if (res.status === 429) {
+            addMessage(
+                `<p>⏳ <strong>Limite de uso atingido.</strong><br>${escapeHtml(data.detail)}</p>`
+            );
+        } else if (data.resposta) {
             addMessage(formatResponse(data.resposta), false, {
                 fontes: data.fontes || [],
                 deve_escalar: data.deve_escalar || false,

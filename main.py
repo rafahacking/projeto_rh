@@ -127,10 +127,24 @@ def chat(request: ChatRequest):
         }
 
     except Exception as e:
+        err = str(e).lower()
+        if "rate limit" in err or "ratelimit" in err or "tokens per day" in err:
+            raise HTTPException(
+                status_code=429,
+                detail=(
+                    "O assistente atingiu o limite de uso do dia no serviço de IA. "
+                    "Por favor, aguarde alguns minutos e tente novamente."
+                ),
+            )
         raise HTTPException(status_code=500, detail=f"Erro ao gerar resposta: {str(e)}")
 
 
 # ── Rotas admin (Basic Auth) ─────────────────────────────────────────────────
+
+@app.get("/admin/stats")
+def admin_stats(_: str = Depends(_verify_admin)):
+    return db.get_stats()
+
 
 @app.get("/admin/unanswered")
 def admin_unanswered(
