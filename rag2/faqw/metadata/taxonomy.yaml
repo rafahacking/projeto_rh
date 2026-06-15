@@ -1,0 +1,40 @@
+# Taxonomia sugerida para RAG de RH
+
+categories:
+  - Conduta
+  - Modelo de Trabalho
+  - Ausências
+  - Benefícios
+  - Onboarding
+  - Performance
+  - Segurança e Privacidade
+  - People Analytics
+  - Operações de RH
+  - FAQ
+  - RAG
+
+sensitive_topics:
+  - assédio
+  - discriminação
+  - retaliação
+  - saúde
+  - dados médicos
+  - remuneração individual
+  - avaliação individual
+  - desligamento individual
+  - dados de dependentes
+  - denúncia
+
+retrieval_filters:
+  employee_self_service:
+    allowed_categories: [Conduta, Modelo de Trabalho, Ausências, Benefícios, Onboarding, FAQ]
+    deny_individual_sensitive_data: true
+  manager_copilot:
+    allowed_categories: [Modelo de Trabalho, Ausências, Performance, People Analytics, Operações de RH]
+    minimum_group_size: 5
+  hr_operations:
+    allowed_categories: [Benefícios, Ausências, Operações de RH, Onboarding]
+    allow_ticket_triage: true
+  ai_engineering:
+    allowed_categories: [Segurança e Privacidade, People Analytics, RAG]
+    allow_guardrail_testing: true

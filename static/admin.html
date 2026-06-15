@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin — RH Inteligente</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        .admin-wrap {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+
+        /* ── Login card ── */
+        .login-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 2.5rem 2rem;
+            width: 100%;
+            max-width: 380px;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+        .login-card h2 { font-size: 1.2rem; font-weight: 700; }
+        .login-card p  { font-size: 0.8rem; color: var(--text-sub); margin-top: -0.75rem; }
+
+        .field { display: flex; flex-direction: column; gap: 0.4rem; }
+        .field label { font-size: 0.78rem; color: var(--text-sub); font-weight: 500; }
+        .field input {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            color: var(--text);
+            font-size: 0.875rem;
+            padding: 0.6rem 0.85rem;
+            outline: none;
+            transition: border-color .2s;
+        }
+        .field input:focus { border-color: var(--violet); }
+
+        .btn-primary {
+            background: var(--grad);
+            border: none;
+            border-radius: var(--radius-sm);
+            color: #fff;
+            cursor: pointer;
+            font-size: 0.875rem;
+            font-weight: 600;
+            padding: 0.7rem;
+            transition: opacity .15s;
+        }
+        .btn-primary:hover { opacity: 0.85; }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .error-msg {
+            background: rgba(239,68,68,.12);
+            border: 1px solid rgba(239,68,68,.3);
+            border-radius: var(--radius-sm);
+            color: #f87171;
+            font-size: 0.8rem;
+            padding: 0.5rem 0.75rem;
+            display: none;
+        }
+
+        /* ── Panel ── */
+        .admin-panel {
+            display: none;
+            width: 100%;
+            max-width: 960px;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+        .panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+        .panel-header h2 { font-size: 1.25rem; font-weight: 700; }
+        .panel-meta { font-size: 0.78rem; color: var(--text-sub); }
+
+        .btn-secondary {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            color: var(--text-sub);
+            cursor: pointer;
+            font-size: 0.8rem;
+            padding: 0.45rem 1rem;
+            transition: border-color .2s, color .2s;
+        }
+        .btn-secondary:hover { border-color: var(--violet); color: var(--text); }
+
+        .questions-table {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            overflow: hidden;
+        }
+        table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+        thead { background: var(--card); }
+        th {
+            padding: 0.75rem 1rem;
+            text-align: left;
+            font-size: 0.72rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: .07em;
+            color: var(--text-muted);
+        }
+        td { padding: 0.75rem 1rem; border-top: 1px solid var(--border); vertical-align: top; }
+        tr:hover td { background: var(--card); }
+
+        .badge-freq {
+            background: rgba(124,58,237,.18);
+            border: 1px solid rgba(124,58,237,.3);
+            color: #a78bfa;
+            border-radius: 99px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            padding: 0.1rem 0.55rem;
+        }
+        .badge-reviewed {
+            background: rgba(34,197,94,.12);
+            border: 1px solid rgba(34,197,94,.25);
+            color: #4ade80;
+            border-radius: 99px;
+            font-size: 0.7rem;
+            padding: 0.1rem 0.55rem;
+        }
+        .badge-pending {
+            background: rgba(251,191,36,.1);
+            border: 1px solid rgba(251,191,36,.25);
+            color: #fbbf24;
+            border-radius: 99px;
+            font-size: 0.7rem;
+            padding: 0.1rem 0.55rem;
+        }
+        .review-btn {
+            background: none;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-sub);
+            cursor: pointer;
+            font-size: 0.72rem;
+            padding: 0.2rem 0.6rem;
+            transition: all .15s;
+        }
+        .review-btn:hover { border-color: #4ade80; color: #4ade80; }
+
+        .delete-btn {
+            background: none;
+            border: 1px solid transparent;
+            border-radius: 6px;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 0.72rem;
+            padding: 0.2rem 0.5rem;
+            transition: all .15s;
+            margin-left: 0.25rem;
+        }
+        .delete-btn:hover { border-color: #f87171; color: #f87171; }
+
+        .btn-danger {
+            background: rgba(239,68,68,.12);
+            border: 1px solid rgba(239,68,68,.3);
+            border-radius: var(--radius-sm);
+            color: #f87171;
+            cursor: pointer;
+            font-size: 0.8rem;
+            padding: 0.45rem 1rem;
+            transition: opacity .15s;
+        }
+        .btn-danger:hover { opacity: 0.8; }
+
+        .empty-state {
+            padding: 3rem;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }
+
+        .back-link {
+            color: var(--text-sub);
+            font-size: 0.8rem;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            transition: color .15s;
+        }
+        .back-link:hover { color: var(--text); }
+    </style>
+</head>
+<body>
+    <div class="bg-glow bg-glow-top"></div>
+    <div class="bg-glow bg-glow-bottom"></div>
+
+    <div class="admin-wrap">
+
+        <!-- Login -->
+        <div class="login-card" id="loginCard">
+            <div>
+                <h2>🔐 Painel Admin</h2>
+                <p>Acesso restrito — equipe de RH</p>
+            </div>
+            <div class="field">
+                <label>Usuário</label>
+                <input type="text" id="inputUser" value="admin" autocomplete="username">
+            </div>
+            <div class="field">
+                <label>Senha</label>
+                <input type="password" id="inputPass" placeholder="••••••••" autocomplete="current-password"
+                    onkeydown="if(event.key==='Enter') doLogin()">
+            </div>
+            <div class="error-msg" id="errorMsg">Usuário ou senha incorretos.</div>
+            <button class="btn-primary" id="loginBtn" onclick="doLogin()">Entrar</button>
+        </div>
+
+        <!-- Painel -->
+        <div class="admin-panel" id="adminPanel">
+            <div class="panel-header">
+                <div>
+                    <a class="back-link" href="/">← Voltar ao chat</a>
+                    <h2 style="margin-top:0.5rem">Perguntas sem resposta</h2>
+                </div>
+                <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap">
+                    <span class="panel-meta" id="panelMeta"></span>
+                    <button class="btn-secondary" onclick="loadQuestions()">↺ Atualizar</button>
+                    <button class="btn-danger" onclick="clearAll()">🗑 Apagar todas</button>
+                </div>
+            </div>
+
+            <div class="questions-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Pergunta</th>
+                            <th>Usuário</th>
+                            <th>Data</th>
+                            <th style="text-align:center">Freq.</th>
+                            <th style="text-align:center">Status</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
+                <div class="empty-state" id="emptyState" style="display:none">
+                    Nenhuma pergunta sem resposta registrada ainda.
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        let _credentials = '';
+
+        function authHeader() {
+            return 'Basic ' + btoa(_credentials);
+        }
+
+        async function doLogin() {
+            const user = document.getElementById('inputUser').value.trim();
+            const pass = document.getElementById('inputPass').value;
+            const btn  = document.getElementById('loginBtn');
+            const err  = document.getElementById('errorMsg');
+
+            if (!user || !pass) return;
+
+            btn.disabled = true;
+            btn.textContent = 'Verificando...';
+            err.style.display = 'none';
+
+            _credentials = user + ':' + pass;
+
+            try {
+                const res = await fetch('/admin/unanswered?limit=1', {
+                    headers: { 'Authorization': authHeader() }
+                });
+
+                if (res.status === 401) {
+                    err.style.display = 'block';
+                    _credentials = '';
+                } else {
+                    document.getElementById('loginCard').style.display = 'none';
+                    document.getElementById('adminPanel').style.display = 'flex';
+                    loadQuestions();
+                }
+            } catch {
+                err.textContent = 'Erro de conexão.';
+                err.style.display = 'block';
+            }
+
+            btn.disabled = false;
+            btn.textContent = 'Entrar';
+        }
+
+        async function loadQuestions() {
+            const res = await fetch('/admin/unanswered?limit=100', {
+                headers: { 'Authorization': authHeader() }
+            });
+            const data = await res.json();
+            const body = document.getElementById('tableBody');
+            const empty = document.getElementById('emptyState');
+            const meta  = document.getElementById('panelMeta');
+
+            meta.textContent = `${data.total} pergunta(s) registrada(s)`;
+            body.innerHTML = '';
+
+            if (data.total === 0) {
+                empty.style.display = 'block';
+                return;
+            }
+            empty.style.display = 'none';
+
+            data.perguntas.forEach((q, i) => {
+                const dt = new Date(q.timestamp).toLocaleString('pt-BR');
+                const reviewed = q.revisado === 1;
+                body.innerHTML += `
+                    <tr id="row-${q.id}">
+                        <td style="color:var(--text-muted)">${i + 1}</td>
+                        <td>${escHtml(q.pergunta)}</td>
+                        <td style="color:var(--text-sub)">${escHtml(q.usuario)}</td>
+                        <td style="color:var(--text-muted);white-space:nowrap">${dt}</td>
+                        <td style="text-align:center">
+                            <span class="badge-freq">${q.frequencia}×</span>
+                        </td>
+                        <td style="text-align:center">
+                            ${reviewed
+                                ? '<span class="badge-reviewed">Revisado</span>'
+                                : '<span class="badge-pending">Pendente</span>'
+                            }
+                        </td>
+                        <td style="white-space:nowrap">
+                            ${!reviewed ? `<button class="review-btn" onclick="markReviewed(${q.id})">✓ Revisado</button>` : ''}
+                            <button class="delete-btn" onclick="deleteQuestion(${q.id})" title="Apagar">✕</button>
+                        </td>
+                    </tr>`;
+            });
+        }
+
+        async function markReviewed(id) {
+            await fetch(`/admin/unanswered/${id}/reviewed`, {
+                method: 'PATCH',
+                headers: { 'Authorization': authHeader() }
+            });
+            loadQuestions();
+        }
+
+        async function deleteQuestion(id) {
+            await fetch(`/admin/unanswered/${id}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': authHeader() }
+            });
+            document.getElementById(`row-${id}`)?.remove();
+            const remaining = document.querySelectorAll('#tableBody tr').length;
+            document.getElementById('panelMeta').textContent = `${remaining} pergunta(s) registrada(s)`;
+            if (remaining === 0) document.getElementById('emptyState').style.display = 'block';
+        }
+
+        async function clearAll() {
+            if (!confirm('Apagar TODAS as perguntas sem resposta? Esta ação não pode ser desfeita.')) return;
+            const res  = await fetch('/admin/unanswered?limit=200', { headers: { 'Authorization': authHeader() } });
+            const data = await res.json();
+            await Promise.all(data.perguntas.map(q =>
+                fetch(`/admin/unanswered/${q.id}`, { method: 'DELETE', headers: { 'Authorization': authHeader() } })
+            ));
+            loadQuestions();
+        }
+
+        function escHtml(text) {
+            const d = document.createElement('div');
+            d.textContent = text;
+            return d.innerHTML;
+        }
+    </script>
+</body>
+</html>

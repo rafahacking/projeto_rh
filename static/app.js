@@ -18,23 +18,56 @@ function formatResponse(text) {
     html = html
         .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
         .replace(/\*(.*?)\*/g, '<em>$1</em>')
+        .replace(/_(.*?)_/g, '<em>$1</em>')
         .replace(/\n\n/g, '</p><p>')
         .replace(/\n/g, '<br>');
     return `<p>${html}</p>`;
 }
 
+function buildSourcesBadges(fontes) {
+    if (!fontes || fontes.length === 0) return '';
+    const badges = fontes.map(f =>
+        `<span class="source-badge">${escapeHtml(f)}</span>`
+    ).join('');
+    return `<div class="sources-row">📄 Fontes: ${badges}</div>`;
+}
+
+function buildEscalateButton() {
+    return `
+        <div class="escalate-row">
+            <button class="escalate-btn" onclick="openTicket()">
+                📝 Abrir chamado com o RH
+            </button>
+        </div>`;
+}
+
+function openTicket() {
+    const input = document.getElementById('msgInput');
+    input.value = 'Quero abrir um chamado com o RH.';
+    input.focus();
+    autoResize(input);
+}
+
 // ─── Message rendering ────────────────────────────────────────
 
-function addMessage(content, isUser = false) {
+function addMessage(content, isUser = false, extras = {}) {
     const area = document.getElementById('messagesArea');
     const indicator = document.getElementById('typingIndicator');
+
+    let footer = '';
+    if (!isUser) {
+        footer += buildSourcesBadges(extras.fontes);
+        if (extras.deve_escalar) {
+            footer += buildEscalateButton();
+        }
+    }
 
     const div = document.createElement('div');
     div.className = `message ${isUser ? 'user-message' : 'agent-message'}`;
     div.innerHTML = `
         <div class="msg-avatar">${isUser ? '👤' : '🤖'}</div>
         <div class="msg-body">
-            <div class="msg-bubble">${content}</div>
+            <div class="msg-bubble">${content}${footer}</div>
             <span class="msg-time">${getTime()}</span>
         </div>
     `;
@@ -78,7 +111,6 @@ async function loadHistory(usuario) {
             );
         });
 
-        // Count only user messages for the CTA counter
         messageCount = data.historico.filter(m => m.role === 'user').length;
     } catch {
         // No history yet — silent
@@ -125,7 +157,10 @@ async function sendMessage() {
         hideTyping();
 
         if (data.resposta) {
-            addMessage(formatResponse(data.resposta));
+            addMessage(formatResponse(data.resposta), false, {
+                fontes: data.fontes || [],
+                deve_escalar: data.deve_escalar || false,
+            });
             messageCount++;
         } else if (data.detail) {
             addMessage(`<p>⚠️ ${escapeHtml(data.detail)}</p>`);
@@ -141,7 +176,7 @@ async function sendMessage() {
     input.focus();
 }
 
-// ─── Clear all (apaga banco) ──────────────────────────────────
+// ─── Clear all ────────────────────────────────────────────────
 
 async function clearChat() {
     try {
@@ -167,6 +202,4 @@ function autoResize(el) {
 // ─── Init ─────────────────────────────────────────────────────
 
 document.getElementById('welcomeTime').textContent = getTime();
-
-// Load history for default user on startup
 loadHistory(currentUser);

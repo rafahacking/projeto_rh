@@ -1,38 +1,34 @@
 from crewai import LLM, Agent, Task, Crew
+from crewai.tools import tool
 import os
 
-BACKSTORY_BASE = """
-Você é um assistente especializado em Recursos Humanos de uma empresa moderna.
-Você está conversando com {usuario}. Trate-o pelo primeiro nome sempre que possível.
+from rag.retriever import retrieve
 
-Seu papel é ajudar colaboradores e gestores com dúvidas e demandas de RH de forma
-clara, empática e objetiva.
+SENSITIVE_TOPICS = [
+    "salário", "salario", "remuneração", "remuneracao",
+    "assédio", "assedio", "discriminação", "discriminacao",
+    "demissão", "demissao", "desligamento",
+    "dados médicos", "dados medicos", "saúde mental", "saude mental",
+    "denúncia", "denuncia", "retaliação", "retaliacao",
+    "avaliação individual", "avaliacao individual",
+]
 
-Suas áreas de conhecimento incluem:
-- Políticas internas, benefícios, férias e licenças
-- Normas trabalhistas (CLT) e compliance
-- Processos de recrutamento e onboarding
-- Avaliação de desempenho e desenvolvimento de carreira
-- People Analytics: turnover, absenteísmo, clima organizacional
-- Abertura e acompanhamento de chamados de RH
-
-Regras de resposta:
-- Responda sempre em português do Brasil
-- Seja direto e objetivo (máximo 5 parágrafos curtos)
-- Use listas quando ajudar a organizar a informação
-- Mantenha continuidade com o histórico da conversa
-- Se não souber algo específico da empresa, oriente sobre o processo geral e sugira
-  que o colaborador entre em contato com o RH para detalhes
-- Nunca invente números ou dados internos que não foram fornecidos
-- Seja acolhedor e empático, especialmente em temas sensíveis (saúde, afastamento, conflitos)
-"""
+SENSITIVE_RESPONSE = (
+    "Este assunto envolve informações sensíveis e deve ser tratado diretamente "
+    "com a equipe de RH, de forma confidencial e segura.\n\n"
+    "Gostaria que eu **abra um chamado** para que um especialista de RH entre em contato com você?"
+)
 
 
-def _build_history_context(historico: list, usuario: str) -> str:
+def _is_sensitive(mensagem: str) -> bool:
+    lower = mensagem.lower()
+    return any(topic in lower for topic in SENSITIVE_TOPICS)
+
+
+def _build_history_block(historico: list, usuario: str) -> str:
     if not historico:
         return ""
-    # Use last 20 messages to avoid overflowing context
-    recent = historico[-20:]
+    recent = historico[-10:]
     lines = []
     for msg in recent:
         label = usuario if msg["role"] == "user" else "Assistente RH"
@@ -45,50 +41,137 @@ def get_hr_response(
     usuario: str,
     historico: list,
     contador_mensagens: int = 0,
-) -> str:
+) -> dict:
+
+    # Tópico sensível → escala imediatamente sem passar pelo LLM
+    if _is_sensitive(mensagem):
+        return {
+            "resposta": SENSITIVE_RESPONSE,
+            "deve_escalar": True,
+            "fundamentada": True,
+            "fontes": [],
+            "sem_resposta": False,
+        }
+
+    # Estado mutável rastreado pelas tools (closures)
+    rag_sources: list[str] = []
+    sem_resposta: list[bool] = [False]
+
+    @tool("buscar_conhecimento_rh")
+    def buscar_conhecimento_rh(query: str) -> str:
+        """
+        Busca informações na base de conhecimento de RH sobre políticas internas,
+        benefícios, férias, licenças, onboarding, performance, compliance, CLT,
+        abertura de chamados e people analytics.
+
+        Use esta ferramenta SOMENTE quando o usuário fizer uma pergunta ou pedido
+        que exija busca em documentos de RH.
+        NÃO use para saudações, agradecimentos ou conversa casual.
+        """
+        resultado = retrieve(query, n_results=4)
+
+        if not resultado["found"]:
+            sem_resposta[0] = True
+            return (
+                "BASE_SEM_RESPOSTA: Não encontrei informações relevantes na base de "
+                "conhecimento para esta pergunta. Informe ao usuário que não possui "
+                "essa informação e pergunte se ele gostaria de abrir um chamado com o RH."
+            )
+
+        for src in resultado["sources"]:
+            if src not in rag_sources:
+                rag_sources.append(src)
+
+        chunks_text = "\n\n---\n\n".join(
+            f"[{c['meta'].get('doc_id', '')} | {c['meta'].get('section', '')}]\n{c['text']}"
+            for c in resultado["chunks"]
+        )
+        return f"FONTES: {', '.join(resultado['sources'])}\n\nCONTEÚDO:\n{chunks_text}"
+
+    # Contexto de histórico vindo do banco
+    history_block = _build_history_block(historico, usuario)
+    is_new = len(historico) == 0
+    nome = usuario.split()[0]
+
+    hist_section = (
+        f"\nHistórico da conversa:\n{history_block}\n"
+        if history_block else ""
+    )
+
     llm = LLM(
         model="groq/llama-3.3-70b-versatile",
         api_key=os.getenv("GROQ_API_KEY"),
-        temperature=0.7,
+        temperature=0.4,
     )
-
-    backstory = BACKSTORY_BASE.format(usuario=usuario)
 
     agente_rh = Agent(
         role="Assistente de Recursos Humanos",
-        goal=f"Responder dúvidas e auxiliar {usuario} em temas de RH com continuidade de conversa",
-        backstory=backstory,
+        goal=(
+            f"Auxiliar {nome} com dúvidas de RH de forma precisa, empática e sem alucinar."
+        ),
+        backstory=(
+            f"Você é um assistente de RH inteligente da empresa, conversando com {nome}.\n\n"
+            "## Quando usar a ferramenta 'buscar_conhecimento_rh':\n"
+            "- O usuário fez uma pergunta sobre RH (férias, benefícios, políticas, onboarding, etc.)\n"
+            "- O usuário pediu orientação sobre um processo interno\n"
+            "- Existe intenção clara de obter informação de RH\n\n"
+            "## Quando NÃO usar a ferramenta:\n"
+            "- Saudações, agradecimentos ou respostas curtas ('oi', 'ok', 'obrigado', 'ótimo')\n"
+            "- Conversa casual sem intenção de busca\n"
+            "- O histórico mostra que a pergunta já foi respondida\n\n"
+            "## Regras de resposta:\n"
+            "- Responda SEMPRE em português do Brasil\n"
+            f"- {'Esta é a primeira mensagem — pode cumprimentar o usuário.' if is_new else 'A conversa já está em andamento — vá direto ao ponto, sem repetir saudações.'}\n"
+            "- Se a ferramenta retornar BASE_SEM_RESPOSTA: informe que não tem a informação "
+            "e ofereça abrir um chamado\n"
+            "- NUNCA invente políticas, números ou dados não encontrados na ferramenta\n"
+            "- Seja empático, direto e objetivo"
+        ),
+        tools=[buscar_conhecimento_rh],
         llm=llm,
         verbose=False,
-        max_iter=3,
+        max_iter=4,
     )
 
-    historico_str = _build_history_context(historico, usuario)
-
-    if historico_str:
-        descricao_task = (
-            f"Histórico da conversa com {usuario}:\n{historico_str}\n\n"
-            f"Pergunta atual de {usuario}: {mensagem}"
-        )
-    else:
-        descricao_task = f"Pergunta de {usuario}: {mensagem}"
-
-    if contador_mensagens >= 6:
-        descricao_task += (
-            "\n\nAo final da resposta, mencione discretamente que para assuntos "
-            "mais específicos ou urgentes, o colaborador pode abrir um chamado direto "
-            "com a equipe de RH."
-        )
-
     tarefa = Task(
-        description=descricao_task,
+        description=(
+            f"{hist_section}"
+            f"\nMensagem de {nome}: {mensagem}\n\n"
+            "Analise a mensagem:\n"
+            "- Se for conversa casual (saudação, agradecimento, confirmação): responda "
+            "naturalmente em 1-2 linhas, sem usar ferramentas.\n"
+            "- Se for uma pergunta ou pedido sobre RH: use obrigatoriamente a ferramenta "
+            "'buscar_conhecimento_rh' e elabore uma resposta completa e detalhada com base "
+            "no conteúdo retornado. Inclua todos os passos, condições e orientações "
+            "relevantes encontrados nos documentos. Use listas quando ajudar a organizar."
+        ),
         expected_output=(
-            "Resposta clara, objetiva e empática em português do Brasil, "
-            "mantendo continuidade com o histórico da conversa."
+            "Para perguntas de RH: resposta detalhada, estruturada e fundamentada nos "
+            "documentos retornados pela ferramenta, em português do Brasil. "
+            "Para conversa casual: resposta curta e natural."
         ),
         agent=agente_rh,
     )
 
     crew = Crew(agents=[agente_rh], tasks=[tarefa], verbose=False)
-    resultado = crew.kickoff()
-    return str(resultado)
+    resposta_final = str(crew.kickoff()).strip()
+
+    # Detecta se o agente sinalizou necessidade de escalada
+    deve_escalar = any(
+        kw in resposta_final.lower()
+        for kw in ["abrir um chamado", "equipe de rh", "escalar", "atendimento humano"]
+    ) and sem_resposta[0]
+
+    if contador_mensagens >= 6 and not deve_escalar and rag_sources:
+        resposta_final += (
+            "\n\n_Para assuntos mais específicos ou urgentes, você pode abrir um "
+            "chamado diretamente com a equipe de RH._"
+        )
+
+    return {
+        "resposta": resposta_final,
+        "deve_escalar": deve_escalar,
+        "fundamentada": not sem_resposta[0],
+        "fontes": rag_sources,
+        "sem_resposta": sem_resposta[0],
+    }

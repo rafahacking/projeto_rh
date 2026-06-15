@@ -15,9 +15,9 @@ def init_db():
     with _conn() as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS sessions (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                usuario     TEXT NOT NULL UNIQUE,
-                criado_em   TEXT NOT NULL,
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                usuario       TEXT NOT NULL UNIQUE,
+                criado_em     TEXT NOT NULL,
                 atualizado_em TEXT NOT NULL
             )
         """)
@@ -28,6 +28,15 @@ def init_db():
                 role      TEXT NOT NULL,
                 conteudo  TEXT NOT NULL,
                 timestamp TEXT NOT NULL
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS unanswered_questions (
+                id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                usuario   TEXT NOT NULL,
+                pergunta  TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
+                revisado  INTEGER NOT NULL DEFAULT 0
             )
         """)
         conn.commit()
@@ -69,6 +78,51 @@ def get_history(usuario: str) -> list:
             (usuario,),
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+def save_unanswered(usuario: str, pergunta: str):
+    now = datetime.now().isoformat()
+    with _conn() as conn:
+        conn.execute(
+            "INSERT INTO unanswered_questions (usuario, pergunta, timestamp) VALUES (?, ?, ?)",
+            (usuario, pergunta, now),
+        )
+        conn.commit()
+
+
+def get_unanswered(limit: int = 100) -> list:
+    with _conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT
+                id,
+                usuario,
+                pergunta,
+                timestamp,
+                revisado,
+                COUNT(*) OVER (PARTITION BY lower(trim(pergunta))) AS frequencia
+            FROM unanswered_questions
+            ORDER BY frequencia DESC, timestamp DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def mark_reviewed(question_id: int):
+    with _conn() as conn:
+        conn.execute(
+            "UPDATE unanswered_questions SET revisado = 1 WHERE id = ?",
+            (question_id,),
+        )
+        conn.commit()
+
+
+def delete_unanswered(question_id: int):
+    with _conn() as conn:
+        conn.execute("DELETE FROM unanswered_questions WHERE id = ?", (question_id,))
+        conn.commit()
 
 
 def clear_all():
